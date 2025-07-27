@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview Quotation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #fdfdfd;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1200px;
+            margin: auto;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.05);
+        }
+        h1, h2 {
+            color: #2c3e50;
+            border-bottom: 2px solid #f5f0e8;
+            padding-bottom: 10px;
+        }
+        .preview-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-bottom: 30px;
+        }
+        .preview-section {
+            background: #f5f0e8;
+            padding: 20px;
+            border-radius: 8px;
+        }
+        .preview-section p { margin: 0 0 10px; }
+        .preview-section p strong { color: #555; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f5f0e8;
+        }
+        .button-container {
+            text-align: right;
+            margin-top: 30px;
+        }
+        button, input[type="submit"] {
+            background-color: #bda88c;
+            color: white;
+            padding: 12px 25px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            margin-left: 10px;
+        }
+        button:hover, input[type="submit"]:hover {
+            background-color: #a8957a;
+        }
+        form {
+            display: inline;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Preview Quotation</h1>
+
+        <div class="preview-grid">
+            <div class="preview-section">
+                <h2>From</h2>
+                <p><strong>Name:</strong> {{ data.company_name }}</p>
+                <p><strong>Address:</strong> {{ data.company_address }}</p>
+                <p><strong>Phone:</strong> {{ data.company_phone }}</p>
+                <p><strong>Email:</strong> {{ data.company_email }}</p>
+            </div>
+            <div class="preview-section">
+                <h2>To</h2>
+                <p><strong>Client Name:</strong> {{ data.client_name }}</p>
+                <p><strong>Address:</strong> {{ data.client_address }}</p>
+                <p><strong>Quotation No:</strong> {{ data.quotation_no }}</p>
+                <p><strong>Date:</strong> {{ data.date }}</p>
+            </div>
+        </div>
+
+        <h2>Items</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Item Description</th>
+                    <th>Units</th>
+                    <th>Cost Per Unit</th>
+                    <th>Amount</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in items %}
+                <tr>
+                    <td>{{ item.name }}</td>
+                    <td>{{ item.quantity }}</td>
+                    <td>{{ "{:,.2f}".format(item.price) }}</td>
+                    <td>{{ "{:,.2f}".format(item.amount) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <h2>Summary</h2>
+        <table>
+            <tr>
+                <td><strong>Total:</strong></td>
+                <td>{{ "{:,.2f}".format(data.total_amount) }}</td>
+            </tr>
+            <tr>
+                <td><strong>Received:</strong></td>
+                <td>({{ "{:,.2f}".format(data.received) }})</td>
+            </tr>
+            <tr>
+                <td><strong>Balance:</strong></td>
+                <td>{{ "{:,.2f}".format(data.balance) }}</td>
+            </tr>
+        </table>
+        <p><strong>Deposit Info:</strong> {{ data.deposit_info }}</p>
+
+        <div class="button-container">
+            <button onclick="window.history.back()">Back to Edit</button>
+            <form action="/create_files" method="post">
+                {% for key, value in data.items() %}
+                    <input type="hidden" name="{{ key }}" value="{{ value }}">
+                {% endfor %}
+                {% for item in items %}
+                    <input type="hidden" name="item_name[]" value="{{ item.name }}">
+                    <input type="hidden" name="quantity[]" value="{{ item.quantity }}">
+                    <input type="hidden" name="price[]" value="{{ item.price }}">
+                {% endfor %}
+                <input type="submit" value="Confirm & Generate Files">
+            </form>
+        </div>
+    </div>
+</body>
+</html>

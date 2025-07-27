@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件已生成</title>
+</head>
+<body>
+    <h1>文件已生成</h1>
+    <p><a href="{{ url_for('download', filename=excel_path) }}">下載報價單 (Excel)</a></p>
+    <p><a href="{{ url_for('download', filename=pdf_path) }}">下載收據 (PDF)</a></p>
+    <p><a href="/">返回</a></p>
+</body>
+</html>
