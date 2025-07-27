@@ -76,7 +76,8 @@ class Quotation(db.Model):
         }
 
 # Register Chinese font
-pdfmetrics.registerFont(TTFont('SimSun', os.path.join(basedir, 'SimSun.ttf')))
+# The font is expected to be in the 'static' directory
+pdfmetrics.registerFont(TTFont('SimSun', os.path.join(basedir, 'static', 'SimSun.ttf')))
 
 with app.app_context():
     db.create_all()
