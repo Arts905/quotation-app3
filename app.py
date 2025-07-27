@@ -31,11 +31,7 @@ os.makedirs(instance_path, exist_ok=True)
 os.makedirs(output_path, exist_ok=True)
 
 # The base directory for reading non-writable files like fonts
-# In Cloudflare Functions, the project root is the execution directory.
 basedir = os.path.abspath(os.path.dirname(__file__))
-# We need to go up one level from `functions` directory
-basedir = os.path.dirname(basedir)
-
 
 # Use DATABASE_URL from environment variables if set, otherwise use the writable path
 default_db_path = os.path.join(instance_path, 'quotations.db')
@@ -83,8 +79,8 @@ class Quotation(db.Model):
 # The font is expected to be in the 'static' directory relative to the project root
 pdfmetrics.registerFont(TTFont('SimSun', os.path.join(basedir, 'static', 'SimSun.ttf')))
 
-# with app.app_context():
-#     db.create_all()
+with app.app_context():
+    db.create_all()
 
 @app.route('/')
 def index():
@@ -199,169 +195,185 @@ def create_files():
     item_names = request.form.getlist('item_name[]')
     quantities = request.form.getlist('quantity[]')
     prices = request.form.getlist('price[]')
-
-    items_data = []
+    items = []
     total_amount = 0
     for i in range(len(item_names)):
         if not item_names[i]: continue
         quantity = float(quantities[i])
         price = float(prices[i])
         amount = quantity * price
-        items_data.append([item_names[i], quantity, f'{price:,.2f}', f'{amount:,.2f}'])
+        items.append({'name': item_names[i], 'quantity': quantity, 'price': price, 'amount': amount})
         total_amount += amount
 
-    # The output directory is already created at the start of the app.
-    # We just need to use the `output_path` variable.
+    balance = total_amount - received
 
-    # Generate Excel
+    # Generate Excel and PDF
+    excel_filename = generate_excel(company_name, company_address, company_phone, company_email, quotation_no, date, client_name, client_address, items, total_amount, received, balance, deposit_info)
+    pdf_filename = generate_pdf(company_name, company_address, company_phone, company_email, quotation_no, date, client_name, client_address, items, total_amount, received, balance, deposit_info)
+
+    return render_template('result.html', excel_file=excel_filename, pdf_file=pdf_filename)
+
+@app.route('/download/<filename>')
+def download_file(filename):
+    return send_from_directory(output_path, filename, as_attachment=True)
+
+def generate_excel(company_name, company_address, company_phone, company_email, quotation_no, date, client_name, client_address, items, total_amount, received, balance, deposit_info):
     wb = Workbook()
     ws = wb.active
     ws.title = "Quotation"
 
-    # Styles
+    # Set styles
     font_bold = Font(bold=True)
-    align_right = Alignment(horizontal='right')
-
-    # Header
-    ws.merge_cells('A1:B1')
-    ws['A1'] = 'Quotation'
-    ws['A1'].font = Font(size=20, bold=True)
+    align_center = Alignment(horizontal='center', vertical='center')
+    border_thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
 
     # Company Info
-    ws['A3'] = company_name
-    ws['A3'].font = font_bold
-    ws['A4'] = company_address
-    ws['A5'] = company_phone
-    ws['A6'] = company_email
+    ws.merge_cells('A1:E1')
+    ws['A1'] = company_name
+    ws['A1'].font = Font(size=16, bold=True)
+    ws['A1'].alignment = align_center
 
-    # Quotation Info
-    info_fill = PatternFill(start_color="f5f0e8", end_color="f5f0e8", fill_type="solid")
-    for col in ['C', 'D']:
-        for row in range(3, 7):
-            ws[f'{col}{row}'].fill = info_fill
+    ws.merge_cells('A2:E2')
+    ws['A2'] = company_address
+    ws['A2'].alignment = align_center
 
-    ws['C3'] = 'Quotation No:'
-    ws['D3'] = quotation_no
-    ws['C4'] = 'Date:'
-    ws['D4'] = date
-    ws['C5'] = 'To:'
-    ws['D5'] = client_name
-    ws['C6'] = 'Address:'
-    ws['D6'] = client_address
+    ws.merge_cells('A3:E3')
+    ws['A3'] = f"Tel: {company_phone} Email: {company_email}"
+    ws['A3'].alignment = align_center
 
-    # Items header
-    headers = ['Items', 'Units', 'Cost Per Unit', 'Amount']
-    header_fill = PatternFill(start_color="f5f0e8", end_color="f5f0e8", fill_type="solid")
-    ws.append([]) # Spacer
+    # Quotation Title
+    ws.merge_cells('A4:E4')
+    ws['A4'] = "報價單"
+    ws['A4'].font = Font(size=14, bold=True)
+    ws['A4'].alignment = align_center
+
+    # Client Info
+    ws['A6'] = "客戶名稱:"
+    ws['B6'] = client_name
+    ws['D6'] = "報價單號碼:"
+    ws['E6'] = quotation_no
+
+    ws['A7'] = "客戶地址:"
+    ws['B7'] = client_address
+    ws['D7'] = "日期:"
+    ws['E7'] = date
+
+    # Table Header
+    headers = ["項目", "數量", "單價", "金額"]
     ws.append(headers)
-    for col_num, header in enumerate(headers, 1):
-        cell = ws.cell(row=ws.max_row, column=col_num)
-        cell.font = font_bold
-        cell.fill = header_fill
+    for col in ['A', 'B', 'C', 'D', 'E']:
+        ws[f'{col}9'].font = font_bold
+        ws[f'{col}9'].alignment = align_center
+        ws[f'{col}9'].border = border_thin
 
-    for item in items_data:
-        ws.append(item)
-    
-    balance = total_amount - received
-    summary_start_row = ws.max_row + 1
-    ws.cell(row=summary_start_row, column=3, value='TOTAL').font = font_bold
-    ws.cell(row=summary_start_row, column=4, value=f'{total_amount:,.2f}').alignment = align_right
-    ws.cell(row=summary_start_row + 1, column=3, value='Received').font = font_bold
-    ws.cell(row=summary_start_row + 1, column=4, value=f'({received:,.2f})').alignment = align_right
-    ws.cell(row=summary_start_row + 2, column=3, value='Balance').font = font_bold
-    ws.cell(row=summary_start_row + 2, column=4, value=f'{balance:,.2f}').alignment = align_right
+    # Items
+    row = 10
+    for item in items:
+        ws.cell(row, 1, item['name'])
+        ws.cell(row, 2, item['quantity'])
+        ws.cell(row, 3, item['price'])
+        ws.cell(row, 4, item['amount'])
+        for col in range(1, 5):
+            ws.cell(row, col).border = border_thin
+        row += 1
 
-    ws.cell(row=summary_start_row + 4, column=1, value=deposit_info)
+    # Total
+    ws.cell(row, 3, "總計:").font = font_bold
+    ws.cell(row, 4, total_amount).font = font_bold
+    ws.cell(row, 3).border = border_thin
+    ws.cell(row, 4).border = border_thin
+    row += 1
+    ws.cell(row, 3, "已收訂金:").font = font_bold
+    ws.cell(row, 4, received).font = font_bold
+    ws.cell(row, 3).border = border_thin
+    ws.cell(row, 4).border = border_thin
+    row += 1
+    ws.cell(row, 3, "餘額:").font = font_bold
+    ws.cell(row, 4, balance).font = font_bold
+    ws.cell(row, 3).border = border_thin
+    ws.cell(row, 4).border = border_thin
 
-    # Column widths
-    ws.column_dimensions['A'].width = 50
-    ws.column_dimensions['B'].width = 10
-    ws.column_dimensions['C'].width = 20
-    ws.column_dimensions['D'].width = 20
+    # Deposit Info
+    row += 2
+    ws.cell(row, 1, f"訂金資訊: {deposit_info}")
 
-    excel_path = os.path.join(output_path, 'Quotation.xlsx')
-    wb.save(excel_path)
+    # Save file
+    filename = f"Quotation_{quotation_no}.xlsx"
+    filepath = os.path.join(output_path, filename)
+    wb.save(filepath)
+    return filename
 
-    # Generate PDF
-    pdf_path = os.path.join(output_path, 'Quotation.pdf')
-    doc = SimpleDocTemplate(pdf_path, pagesize=A4, topMargin=2*cm, bottomMargin=2*cm, leftMargin=2*cm, rightMargin=2*cm)
-    
+def generate_pdf(company_name, company_address, company_phone, company_email, quotation_no, date, client_name, client_address, items, total_amount, received, balance, deposit_info):
+    filename = f"Quotation_{quotation_no}.pdf"
+    filepath = os.path.join(output_path, filename)
+    doc = SimpleDocTemplate(filepath, pagesize=A4)
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(name='SimSun', fontName='SimSun', fontSize=10, leading=14))
-    styles.add(ParagraphStyle(name='SimSunBold', fontName='SimSun', fontSize=10, leading=14, fontStyle='Bold'))
-    styles.add(ParagraphStyle(name='SimSunRight', fontName='SimSun', fontSize=10, alignment=2))
-    styles.add(ParagraphStyle(name='SimSunTitle', fontName='SimSun', fontSize=18, leading=22))
+    styles.add(ParagraphStyle(name='SimSunBold', fontName='SimSun', fontSize=12, leading=14, alignment=1))
+    styles.add(ParagraphStyle(name='SimSunTitle', fontName='SimSun', fontSize=16, leading=20, alignment=1))
 
-    story = []
+    elements = []
 
-    # Header
-    header_data = [
-        [Paragraph('<b>Quotation</b>', styles['SimSunTitle']), '', Paragraph(f'Quotation No: {quotation_no}', styles['SimSun']), ''],
-        [Paragraph(company_name, styles['SimSunBold']), '', Paragraph(f'Date: {date}', styles['SimSun']), ''],
-        [Paragraph(company_address, styles['SimSun']), '', Paragraph(f'To: {client_name}', styles['SimSun']), ''],
-        [Paragraph(company_phone, styles['SimSun']), '', Paragraph(f'Address: {client_address}', styles['SimSun']), ''],
-        [Paragraph(company_email, styles['SimSun']), '', '', '']
+    # Company Info
+    elements.append(Paragraph(company_name, styles['SimSunTitle']))
+    elements.append(Paragraph(company_address, styles['SimSunBold']))
+    elements.append(Paragraph(f"Tel: {company_phone} Email: {company_email}", styles['SimSunBold']))
+    elements.append(Spacer(1, 0.5*cm))
+    elements.append(Paragraph("報價單", styles['SimSunTitle']))
+    elements.append(Spacer(1, 1*cm))
+
+    # Client Info
+    client_info_data = [
+        [f"客戶名稱: {client_name}", f"報價單號碼: {quotation_no}"],
+        [f"客戶地址: {client_address}", f"日期: {date}"]
     ]
-    header_table = Table(header_data, colWidths=[7*cm, 3*cm, 7*cm, 0*cm])
-    header_table.setStyle(TableStyle([
-        ('VALIGN', (0,0), (-1,-1), 'TOP'),
-        ('SPAN', (0,0), (1,0)),
-        ('SPAN', (2,0), (3,0)),
-        ('SPAN', (2,1), (3,1)),
-        ('SPAN', (2,2), (3,2)),
-        ('SPAN', (2,3), (3,3)),
-        ('BACKGROUND', (2,0), (3,4), colors.HexColor('#f5f0e8')),
-        ('FONTNAME', (2,0), (3,4), 'SimSun'),
+    client_table = Table(client_info_data, colWidths=[10*cm, 6*cm])
+    client_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'SimSun'),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
     ]))
-    story.append(header_table)
-    story.append(Spacer(1, 1*cm))
+    elements.append(client_table)
+    elements.append(Spacer(1, 1*cm))
 
     # Items Table
-    items_header = [Paragraph(h, styles['SimSunBold']) for h in ['Items', 'Units', 'Cost Per Unit', 'Amount']]
-    items_list = [items_header] + [[Paragraph(str(col), styles['SimSun']) for col in row] for row in items_data]
+    item_data = [["項目", "數量", "單價", "金額"]]
+    for item in items:
+        item_data.append([item['name'], item['quantity'], item['price'], item['amount']])
     
-    items_table = Table(items_list, colWidths=[8*cm, 2*cm, 3*cm, 4*cm])
-    items_table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#f5f0e8')), # Header color
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor('#fafafa')), # Item rows color
-        ('TEXTCOLOR',(0,0),(-1,0),colors.black),
-        ('ALIGN', (1,1), (-1,-1), 'RIGHT'),
+    item_table = Table(item_data, colWidths=[8*cm, 2*cm, 3*cm, 3*cm])
+    item_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'SimSun'),
+        ('BACKGROUND', (0,0), (-1,0), colors.grey),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 12),
-        ('GRID', (0,0), (-1,-1), 1, colors.HexColor('#dddddd')) # A more visible grid
+        ('GRID', (0,0), (-1,-1), 1, colors.black)
     ]))
-    story.append(items_table)
+    elements.append(item_table)
 
-    # Summary
-    balance = total_amount - received
-    summary_data = [
-        ['', 'TOTAL', f'{total_amount:,.2f}'],
-        ['', 'Received', f'({received:,.2f})'],
-        ['', 'Balance', f'{balance:,.2f}']
+    # Total
+    total_data = [
+        ["", "", "總計:", total_amount],
+        ["", "", "已收訂金:", received],
+        ["", "", "餘額:", balance]
     ]
-    summary_table = Table(summary_data, colWidths=[11*cm, 2*cm, 4*cm])
-    summary_table.setStyle(TableStyle([
-        ('ALIGN', (1,0), (-1,-1), 'RIGHT'),
-        ('FONTNAME', (1,0), (1,-1), 'SimSun'),
-        ('FONTNAME', (2,0), (2,-1), 'SimSun'),
-        ('BACKGROUND', (0,0), (-1,-1), colors.HexColor('#f5f0e8')),
-        ('GRID', (1,0), (-1,-1), 1, colors.white)
+    total_table = Table(total_data, colWidths=[8*cm, 2*cm, 3*cm, 3*cm])
+    total_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'SimSun'),
+        ('ALIGN', (2,0), (2,2), 'RIGHT'),
+        ('ALIGN', (3,0), (3,2), 'CENTER'),
+        ('GRID', (2,0), (-1,-1), 1, colors.black)
     ]))
-    story.append(summary_table)
-    story.append(Spacer(1, 1*cm))
+    elements.append(total_table)
+    elements.append(Spacer(1, 1*cm))
 
-    # Footer
-    story.append(Paragraph(deposit_info, styles['SimSun']))
-    story.append(Spacer(1, 0.5*cm))
-    story.append(Paragraph('Thank you for your business!', styles['SimSunRight']))
+    # Deposit Info
+    elements.append(Paragraph(f"訂金資訊: {deposit_info}", styles['SimSun']))
 
-    doc.build(story)
-
-    return render_template('result.html', excel_path='Quotation.xlsx', pdf_path='Quotation.pdf')
-
-@app.route('/download/<filename>')
-def download(filename):
-    return send_from_directory(output_path, filename, as_attachment=True)
+    doc.build(elements)
+    return filename
 
 if __name__ == '__main__':
     app.run(debug=True)
