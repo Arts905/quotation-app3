@@ -36,5 +36,8 @@ venv/
 ENV/
 env/
 
+# Node modules
+node_modules/
+
 # Vercel
 .vercel/
