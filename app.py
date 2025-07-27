@@ -15,10 +15,11 @@ import os
 
 app = Flask(__name__)
 
-# Determine the base directory for writable files (Vercel uses /tmp)
-if os.environ.get('VERCEL'):
+# On serverless platforms like Vercel or Cloudflare Pages, use /tmp for writable files
+if os.environ.get('VERCEL') or os.environ.get('CF_PAGES'):
     writable_dir = '/tmp'
 else:
+    # For local development, use the project directory
     writable_dir = os.path.abspath(os.path.dirname(__file__))
 
 # Define paths for instance (database) and output (generated files)
