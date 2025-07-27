@@ -83,8 +83,8 @@ class Quotation(db.Model):
 # The font is expected to be in the 'static' directory relative to the project root
 pdfmetrics.registerFont(TTFont('SimSun', os.path.join(basedir, 'static', 'SimSun.ttf')))
 
-with app.app_context():
-    db.create_all()
+# with app.app_context():
+#     db.create_all()
 
 @app.route('/')
 def index():
